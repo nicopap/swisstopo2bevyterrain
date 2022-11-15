@@ -23,7 +23,7 @@ done
 # Build the conversion utlity
 cargo build --release
 TARGET_DIR="$(cargo metadata --format-version=1 | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
-cp "${TARGET_DIR}/release/swisstopo2bevyterrain*" .
+cp "${TARGET_DIR}/release/swisstopo2bevyterrain" .
 
 # This may take between 10 minutes and 10 hours depending on how much data you
 # selected. Make sure to not download more data than you can handle!
@@ -62,9 +62,9 @@ du -h --summarize albedo
 MIN_LAT=$(ls albedo/ |
   cut -d_ -f 3 |
   awk -F '-' 'BEGIN{lat=9999}{lat = (lat<$1)?lat:$1}END {print lat}')
-MIN_LONG=$(ls albedo/ |
+MAX_LONG=$(ls albedo/ |
   cut -d_ -f 3 |
-  awk -F '-' 'BEGIN{long=9999}{long = (long<$2)?long:$2}END {print long}')
+  awk -F '-' 'BEGIN{long=0}{long = (long>$2)?long:$2}END {print long}')
 
 # bevy_terrain accepts heights in the form of 16 bits integer, the swisstopo
 # alti3d is 32 bits floats. We need to convert them. Currently the tiff crate
@@ -77,13 +77,13 @@ MIN_LONG=$(ls albedo/ |
 mkdir clean_albedo
 mkdir clean_topo
 for file in $(ls albedo) ; do
-  OUTPUT=$(echo -n $file | cut -d_ -f 3 | awk -F '-' "{print (\$1 - $MIN_LAT) \"_\" (\$2 - $MIN_LONG)}")
+  OUTPUT=$(echo -n $file | cut -d_ -f 3 | awk -F '-' "{print (\$1 - $MIN_LAT) \"_\" ($MAX_LONG - \$2)}")
   (tiff2rgba albedo/$file $file.tmp && 
-    ./swisstopo2bevyterrain* --input $file.tmp --output clean_albedo/albedo_${OUTPUT}.png albedo &&
+    ./swisstopo2bevyterrain --input $file.tmp --output clean_albedo/albedo_${OUTPUT}.png albedo &&
     \rm $file.tmp
   ) &
 done
 for file in $(ls topo) ; do
-  OUTPUT=$(echo -n $file | cut -d_ -f 3 | awk -F '-' "{print (\$1 - $MIN_LAT) \"_\" (\$2 - $MIN_LONG)}")
-  ./swisstopo2bevyterrain* --input topo/$file --output clean_topo/height_${OUTPUT}.png topo &
+  OUTPUT=$(echo -n $file | cut -d_ -f 3 | awk -F '-' "{print (\$1 - $MIN_LAT) \"_\" ($MAX_LONG - \$2)}")
+  ./swisstopo2bevyterrain --input topo/$file --output clean_topo/height_${OUTPUT}.png topo &
 done

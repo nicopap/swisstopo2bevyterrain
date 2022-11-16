@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 # STEP ONE:
 # go to the following addresses and download the list of URLs for the data you
@@ -6,12 +6,15 @@
 # - https://www.swisstopo.admin.ch/en/geodata/images/ortho/swissimage10.html
 # - https://www.swisstopo.admin.ch/en/geodata/height/alti3d.html
 #
+# WARNING: bevy_terrain doesn't support the high precision dataset (10cm/50cm)
+# because it relies on attachment scale being the same as the base height scale.
 # You'll get two CSV files. Each line represents an image URL to download,
 # to download everything automatically, run the following command:
 
 # How many images to download at the same time. Please only use this with the
 # csv files downloaded through the provided links!
 CONCURRENT_DOWNLOADS=4
+CONCURRENT_CONVERTS=12
 
 for prog in xargs curl du mkdir cargo cut awk tiff2rgba sed ; do
   if ! which $prog ; then
@@ -27,14 +30,14 @@ cp "${TARGET_DIR}/release/swisstopo2bevyterrain" .
 
 # This may take between 10 minutes and 10 hours depending on how much data you
 # selected. Make sure to not download more data than you can handle!
-mkdir albedo
+mkdir albedo || true
 cd albedo
-xargs -P 4 -I _ curl -SL _ --remote-name < ../*swissimage-dop10-*csv
+xargs -P $CONCURRENT_DOWNLOADS -I _ curl -SL _ --remote-name < ../*swissimage-dop10-*csv
 cd ..
 
-mkdir topo
+mkdir topo || true
 cd topo
-xargs -P 4 -I _ curl -SL _ --remote-name < ../*swissalti3d-*csv
+xargs -P $CONCURRENT_DOWNLOADS -I _ curl -SL _ --remote-name < ../*swissalti3d-*csv
 cd ..
 
 # You should now have two directories full of thousands of .tif files. Try
@@ -76,14 +79,21 @@ MAX_LONG=$(ls albedo/ |
 
 mkdir clean_albedo
 mkdir clean_topo
+
 for file in $(ls albedo) ; do
+  if [[ $(jobs -r -p | wc -l) -ge $CONCURRENT_CONVERTS ]]; then
+    wait -n
+  fi
   OUTPUT=$(echo -n $file | cut -d_ -f 3 | awk -F '-' "{print (\$1 - $MIN_LAT) \"_\" ($MAX_LONG - \$2)}")
-  (tiff2rgba albedo/$file $file.tmp && 
-    ./swisstopo2bevyterrain --input $file.tmp --output clean_albedo/albedo_${OUTPUT}.png albedo &&
+  (tiff2rgba -M 0 albedo/$file $file.tmp && 
+    ./swisstopo2bevyterrain --input $file.tmp --output clean_albedo/albedo_${OUTPUT}.png albedo ;
     \rm $file.tmp
   ) &
 done
 for file in $(ls topo) ; do
+  if [[ $(jobs -r -p | wc -l) -ge $CONCURRENT_CONVERTS ]]; then
+    wait -n
+  fi
   OUTPUT=$(echo -n $file | cut -d_ -f 3 | awk -F '-' "{print (\$1 - $MIN_LAT) \"_\" ($MAX_LONG - \$2)}")
   ./swisstopo2bevyterrain --input topo/$file --output clean_topo/height_${OUTPUT}.png topo &
 done

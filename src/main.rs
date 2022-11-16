@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use image::{ImageBuffer, ImageFormat, Luma};
-use tiff::decoder::{Decoder, DecodingResult};
+use tiff::decoder::{Decoder, DecodingResult, Limits};
 
 const MAX_SWISS_HEIGHT: f32 = 4644.0;
 const MIN_SWISS_HEIGHT: f32 = 193.0;
@@ -30,7 +30,9 @@ enum TiffKind {
 }
 
 fn read_32f_tiff(reader: impl Read + Seek) -> (Vec<f32>, u32, u32) {
-    let mut decoder = Decoder::new(reader).unwrap();
+    let mut decoder = Decoder::new(reader)
+        .unwrap()
+        .with_limits(Limits::unlimited());
     let (width, height) = decoder.dimensions().unwrap();
     if let DecodingResult::F32(buffer) = decoder.read_image().unwrap() {
         (buffer, width, height)
@@ -51,7 +53,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             image.write_to(&mut output, ImageFormat::Png)?;
         }
         TiffKind::Albedo => {
-            let rgba_buffer = image::io::Reader::with_format(input, ImageFormat::Tiff).decode()?;
+            let mut reader = image::io::Reader::with_format(input, ImageFormat::Tiff);
+            reader.no_limits();
+            let rgba_buffer = reader.decode()?;
             let rgb_buffer = rgba_buffer.into_rgb8();
             rgb_buffer.write_to(&mut output, ImageFormat::Png)?;
         }

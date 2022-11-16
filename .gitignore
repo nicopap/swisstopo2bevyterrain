@@ -1,1 +1,7 @@
 /target
+/albedo
+/topo
+/clean_albedo
+/clean_topo
+/*.csv
+/swisstopo2bevyterrain
